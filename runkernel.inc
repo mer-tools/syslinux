@@ -226,7 +226,7 @@ get_next_opt:   lodsb
 		jne .notkeep
 		cmp byte [si+7],' '		; Must be whitespace or EOS
 		ja .notkeep
-		mov byte [KeepPXE],1
+		or byte [cs:KeepPXE],1
 .notkeep:
 %endif
                 push es                         ; Save ES -> real_mode_seg
