@@ -32,6 +32,8 @@ Changes in 1.75:
 	* PXELINUX: Actually found the combination of calls that
 	  allows some (most?) PXE 2+ stacks to be unloaded from memory
 	  properly.
+	* PXELINUX: Add "keeppxe" command-line option to disable
+	  the standard unloading of the PXE stack.
 
 Changes in 1.74:
 	* SYSLINUX: fix bug that would cause valid kernel images to be

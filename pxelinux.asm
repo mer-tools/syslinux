@@ -1941,6 +1941,9 @@ ack_packet:
 ; the memory.  Assumes CS == DS == ES.
 ;
 unload_pxe:
+		test byte [KeepPXE],01h		; Should we keep PXE around?
+		je reset_pxe
+
 		mov si,new_api_unload
 		cmp byte [APIVer+1],2		; Major API version >= 2?
 		jae .new_api
@@ -1998,6 +2001,14 @@ unload_pxe:
 		mov eax,[4*0x1a]
 		call writehex8
 		jmp crlf
+
+		; We want to keep PXE around, but still we should reset
+		; it to the standard bootup configuration
+reset_pxe:
+		mov bx,PXENV_UDP_CLOSE
+		mov di,pxe_udp_close_pkt
+		call far [PXENVEntry]
+		ret
 
 ;
 ; gendotquad
@@ -2457,6 +2468,7 @@ NextSocket	dw 49152		; Counter for allocating socket numbers
 VGAFontSize	dw 16			; Defaults to 16 byte font
 UserFont	db 0			; Using a user-specified font
 ScrollAttribute	db 07h			; White on black (for text mode)
+KeepPXE		db 0			; Should PXE be kept around?
 
 ;
 ; TFTP commands
