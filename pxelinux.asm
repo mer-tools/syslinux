@@ -1942,7 +1942,7 @@ ack_packet:
 ;
 unload_pxe:
 		test byte [KeepPXE],01h		; Should we keep PXE around?
-		je reset_pxe
+		jnz reset_pxe
 
 		mov si,new_api_unload
 		cmp byte [APIVer+1],2		; Major API version >= 2?
