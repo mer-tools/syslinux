@@ -247,6 +247,15 @@ VGAFileBuf	resb FILENAME_MAX	; Unmangled VGA image name
 VGAFileBufEnd	equ $
 VGAFileMBuf	resb FILENAME_MAX	; Mangled VGA image name
 
+;
+; PXE packets which don't need static initialization
+;
+		alignb 4
+pxe_unload_stack_pkt:
+.status:	resw 1			; Status
+.reserved:	resw 10			; Reserved
+pxe_unload_stack_pkt_len	equ $-pxe_unload_stack_pkt
+
 		alignb tftp_port_t_size
 Sockets		resb MAX_SOCKETS*tftp_port_t_size
 
@@ -1929,92 +1938,51 @@ ack_packet:
 ; unload_pxe:
 ;
 ; This function unloads the PXE and UNDI stacks and unclaims
-; the memory.
+; the memory.  Assumes CS == DS == ES.
 ;
 unload_pxe:
-		mov di,pxe_udp_close_pkt
-		mov bx,PXENV_UDP_CLOSE
-		call far [PXENVEntry]
-		mov al,0Bh
-		jc .cant_free
-		cmp word [pxe_udp_close_pkt.status],byte PXENV_STATUS_SUCCESS
-		mov al,0Ch
-		jne .cant_free
-
-		mov di,pxe_undi_shutdown_pkt
-		mov bx,PXENV_UNDI_SHUTDOWN
-		call far [PXENVEntry]
-		mov al,0Dh
-		jc .cant_free
-		cmp word [pxe_undi_shutdown_pkt.status],byte PXENV_STATUS_SUCCESS
-		mov al,0Eh
-		jne .cant_free
-		
-		mov di,pxe_unload_stack_pkt
-		mov bx,PXENV_UNLOAD_STACK
-		call far [PXENVEntry]
-		mov al,01h			; ERROR 01
-		jc .cant_free
-		cmp word [pxe_unload_stack_pkt.status],byte PXENV_STATUS_SUCCESS
-		mov al,02h			; ERROR 02
-		jne .cant_free
-
-		; Use UNDI CLEANUP for PXE 1, STOP BASE/STOP UNDI for PXE 2
-		cmp byte [APIVer+1], 2
-		jb .old_api
-
-		; These calls don't exist in PXE 1
+		mov si,new_api_unload
+		cmp byte [APIVer+1],2		; Major API version >= 2?
+		jae .new_api
+		mov si,old_api_unload
 .new_api:
-%if 0
-		cmp word [APIVer], 0201h
-		jb .old_api
-		mov bx,PXENV_STOP_BASE
-		mov di,pxe_undi_cleanup_pkt	; Same packet for both calls
+		
+.call_loop:	xor ax,ax
+		lodsb
+		and ax,ax
+		jz .call_done
+		xchg bx,ax
+		mov di,pxe_unload_stack_pkt
+		push di
+		xor ax,ax
+		mov cx,pxe_unload_stack_pkt_len >> 1
+		rep stosw
+		pop di
 		call far [PXENVEntry]
-		mov al,09h
 		jc .cant_free
-		cmp word [pxe_undi_cleanup_pkt.status],byte PXENV_STATUS_SUCCESS
-		mov al,0Ah
+		cmp word [pxe_unload_stack_pkt.status],PXENV_STATUS_SUCCESS
 		jne .cant_free
+		jmp .call_loop
 
-%endif
-		mov bx,PXENV_STOP_UNDI
-		mov di,pxe_undi_cleanup_pkt	; Same packet for both calls
-		call far [PXENVEntry]
-		mov al,03h
-		jc .cant_free			; ERROR 03
-		cmp word [pxe_undi_cleanup_pkt.status],byte PXENV_STATUS_SUCCESS
-		mov al,04h			; ERROR 04
-		jne .cant_free
-		jmp .common
-
-.old_api:
-		mov bx,PXENV_UNDI_CLEANUP
-		mov di,pxe_undi_cleanup_pkt
-		call far [PXENVEntry]
-		mov al,07h
-		jc .cant_free
-		cmp word [pxe_undi_cleanup_pkt.status],byte PXENV_STATUS_SUCCESS
-		mov al,08h
-		jne .cant_free
-.common:
+.call_done:
+		mov bx,0FF00h
 
 		mov dx,[RealBaseMem]
 		cmp dx,[BIOS_fbm]		; Sanity check
-		mov al,05h			; ERROR 05
 		jna .cant_free
+		inc bx
 
 		; Check that PXE actually unhooked the INT 1Ah chain
-		movzx ebx,word [4*0x1a]
+		movzx eax,word [4*0x1a]
 		movzx ecx,word [4*0x1a+2]
 		shl ecx,4
-		add ebx,ecx
-		shr ebx,10
-		cmp bx,dx			; Not in range
+		add eax,ecx
+		shr eax,10
+		cmp ax,dx			; Not in range
 		jae .ok
-		cmp bx,[BIOS_fbm]
-		mov al,06h			; ERROR 06
-		jae .cant_free		
+		cmp ax,[BIOS_fbm]
+		jae .cant_free
+		; inc bx
 
 .ok:
 		mov [BIOS_fbm],dx
@@ -2023,8 +1991,9 @@ unload_pxe:
 .cant_free:
 		mov si,cant_free_msg
 		call writestr
-		call writehex2
-		mov al,' '
+		xchg ax,bx
+		call writehex4
+		mov al,'-'
 		call writechr
 		mov eax,[4*0x1a]
 		call writehex8
@@ -2408,6 +2377,22 @@ exten_table_end:
 PXENVEntry	dw pxe_thunk,0
 
 ;
+; PXE unload sequences
+;
+new_api_unload:
+		db PXENV_UDP_CLOSE
+		db PXENV_UNDI_SHUTDOWN
+		db PXENV_UNLOAD_STACK
+		db PXENV_STOP_UNDI
+		db 0
+old_api_unload:
+		db PXENV_UDP_CLOSE
+		db PXENV_UNDI_SHUTDOWN
+		db PXENV_UNLOAD_STACK
+		db PXENV_UNDI_CLEANUP
+		db 0
+
+;
 ; PXE query packets partially filled in
 ;
 pxe_bootp_query_pkt_2:
@@ -2455,16 +2440,6 @@ pxe_udp_read_pkt:
 .lport:		dw 0			; Local port
 .buffersize:	dw 0			; Max packet size
 .buffer:	dw 0, 0			; seg:off of buffer
-
-pxe_unload_stack_pkt:
-.status:	dw 0			; Status
-.reserved:	times 10 db 0		; Reserved
-
-pxe_undi_shutdown_pkt:
-.status:	dw 0			; Status
-
-pxe_undi_cleanup_pkt:
-.status:	dw 0			; Status
 
 ;
 ; Misc initialized (data) variables
