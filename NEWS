@@ -2,7 +2,7 @@ Starting with 1.47, changes marked with SYSLINUX/PXELINUX/ISOLINUX
 apply to that specific program only; other changes apply to both.
 
 Changes in 1.67:
-	* Major code restructuring.
+	* Handle bug in the location of initrd.
 
 Changes in 1.66:
 	* MEMDISK: Make compile with newer versions of gcc.
