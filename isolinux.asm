@@ -145,7 +145,6 @@ HighMemSize	resd 1			; End of memory pointer (bytes)
 RamdiskMax	resd 1			; Highest address for a ramdisk
 KernelSize	resd 1			; Size of kernel (bytes)
 SavedSSSP	resd 1			; Our SS:SP while running a COMBOOT image
-PMESP		resd 1			; Protected-mode ESP
 RootDir		resb dir_t_size		; Root directory
 CurDir		resb dir_t_size		; Current directory
 KernelClust	resd 1			; Kernel size in clusters
@@ -298,35 +297,6 @@ initial_csum:	xor edi,edi
 %endif
 
 found_drive:
-		; Get drive information
-		mov ah,48h
-		mov dl,[DriveNo]
-		mov si,drive_params
-		int 13h
-		jnc params_ok
-
-		mov si,nosecsize_msg
-		call writemsg
-
-params_ok:
-		; Check for the sector size (should be 2048, but
-		; some BIOSes apparently think we're 512-byte media)
-		;
-		; FIX: We need to check what the proper behaviour
-		; is for getlinsec when the BIOS thinks the sector
-		; size is 512!!!  For now, we ignore what the BIOS
-		; says and assume it's using 2048-byte sectors
-		; anyway.  This is correct for at least one BIOS
-		; with this particular pathology.
-%ifdef DEBUG_MESSAGES
-		mov si,secsize_msg
-		call writemsg
-		mov ax,[dp_secsize]
-		call writehex4
-		call crlf
-%endif
-
-load_image:
 		; Some BIOSes apparently have limitations on the size 
 		; that may be loaded (despite the El Torito spec being very
 		; clear on the fact that it must all be loaded.)  Therefore,
@@ -1164,7 +1134,6 @@ kernel_corrupt: mov si,err_notkernel
 ;
 ; .com 	- COMBOOT image
 ; .cbt	- COMBOOT image
-; .c32  - COM32 image
 ; .bs	- Boot sector
 ; .0	- PXE bootstrap program (PXELINUX only)
 ; .bin  - Boot sector
@@ -1204,8 +1173,6 @@ kernel_good:
 		je is_comboot_image
 		cmp ecx,'.cbt'
 		je is_comboot_image
-		cmp ecx,'.c32'
-		je is_com32_image
 		cmp ecx,'.img'
 		je is_disk_image
 		cmp ecx,'.bss'
@@ -1229,7 +1196,6 @@ kernel_good:
 ; COMBOOT-loading code
 ;
 %include "comboot.inc"
-%include "com32.inc"
 
 ;
 ; Boot sector loading code
@@ -1850,7 +1816,6 @@ getfssec:
 %include "loadhigh.inc"		; Load a file into high memory
 %include "font.inc"		; VGA font stuff
 %include "graphics.inc"		; VGA graphics
-%include "highmem.inc"		; High memory sizing
 
 ; -----------------------------------------------------------------------------
 ;  Begin data section
@@ -1865,6 +1830,15 @@ boot_prompt	db 'boot: ', 0
 wipe_char	db BS, ' ', BS, 0
 err_notfound	db 'Could not find kernel image: ',0
 err_notkernel	db CR, LF, 'Invalid or corrupt kernel image.', CR, LF, 0
+err_not386	db 'It appears your computer uses a 286 or lower CPU.'
+		db CR, LF
+		db 'You cannot run Linux unless you have a 386 or higher CPU'
+		db CR, LF
+		db 'in your machine.  If you get this message in error, hold'
+		db CR, LF
+		db 'down the Ctrl key while booting, and I will take your'
+		db CR, LF
+		db 'word for it.', CR, LF, 0
 err_noram	db 'It appears your computer has less than 360K of low ("DOS")'
 		db 0Dh, 0Ah
 		db 'RAM.  Linux needs at least this amount to boot.  If you get'
