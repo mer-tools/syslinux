@@ -193,7 +193,6 @@ HighMemSize	resd 1			; End of memory pointer (bytes)
 RamdiskMax	resd 1			; Highest address for a ramdisk
 KernelSize	resd 1			; Size of kernel (bytes)
 SavedSSSP	resd 1			; Our SS:SP while running a COMBOOT image
-PMESP		resd 1			; Protected-mode ESP
 Stack		resd 1			; Pointer to reset stack
 PXEEntry	resd 1			; !PXE API entry point
 RebootTime	resd 1			; Reboot timeout, if set by option
@@ -222,6 +221,7 @@ KernelExtPtr	resw 1			; During search, final null pointer
 IPOptionLen	resw 1			; Length of IPOption
 LocalBootType	resw 1			; Local boot return code
 RealBaseMem	resw 1			; Amount of DOS memory after freeing
+APIVer		resw 1			; PXE API version found
 TextAttrBX      equ $
 TextAttribute   resb 1			; Text attribute for message file
 TextPage        resb 1			; Active display page
@@ -306,6 +306,15 @@ _start1:
 		call writestr
 
 ;
+; Assume API version 2.1, in case we find the !PXE structure without
+; finding the PXENV+ structure.  This should really look at the Base
+; Code ROM ID structure in have_pxe, but this is adequate for now --
+; if we have !PXE, we have to be 2.1 or higher, and we don't care
+; about higher versions than that.
+;
+		mov word [APIVer],0201h
+
+;
 ; Now we need to find the !PXE structure.  It's *supposed* to be pointed
 ; to by SS:[SP+4], but support INT 1Ah, AX=5650h method as well.
 ;
@@ -343,10 +352,11 @@ have_pxenv:
 		mov si,apiver_str
 		call writestr
 		mov ax,[es:bx+6]
+		mov [APIVer],ax
 		call writehex4
 		call crlf
 
-		cmp word [es:bx+6], 0201h	; API version 2.1 or higher
+		cmp ax,0201h			; API version 2.1 or higher
 		jb old_api
 		mov si,bx
 		mov ax,es
@@ -1038,7 +1048,6 @@ kernel_corrupt: mov si,err_notkernel
 ;
 ; .com 	- COMBOOT image
 ; .cbt	- COMBOOT image
-; .c32  - COM32 image
 ; .bs	- Boot sector
 ; .0	- PXE bootstrap program (PXELINUX only)
 ; .bin  - Boot sector
@@ -1080,8 +1089,6 @@ kernel_good:
 		je is_comboot_image
 		cmp ecx,'.cbt'
 		je is_comboot_image
-		cmp ecx,'.c32'
-		je is_com32_image
 		cmp ecx,'.bss'
 		je is_bss_image
 		cmp ecx,'.bin'
@@ -1128,7 +1135,6 @@ kernel_good:
 ; COMBOOT-loading code
 ;
 %include "comboot.inc"
-%include "com32.inc"
 
 ;
 ; Boot sector loading code
@@ -1929,18 +1935,73 @@ unload_pxe:
 		mov di,pxe_udp_close_pkt
 		mov bx,PXENV_UDP_CLOSE
 		call far [PXENVEntry]
+		mov al,0Bh
+		jc .cant_free
+		cmp word [pxe_udp_close_pkt.status],byte PXENV_STATUS_SUCCESS
+		mov al,0Ch
+		jne .cant_free
+
 		mov di,pxe_undi_shutdown_pkt
 		mov bx,PXENV_UNDI_SHUTDOWN
 		call far [PXENVEntry]
+		mov al,0Dh
+		jc .cant_free
+		cmp word [pxe_undi_shutdown_pkt.status],byte PXENV_STATUS_SUCCESS
+		mov al,0Eh
+		jne .cant_free
+		
 		mov di,pxe_unload_stack_pkt
 		mov bx,PXENV_UNLOAD_STACK
 		call far [PXENVEntry]
+		mov al,01h			; ERROR 01
 		jc .cant_free
 		cmp word [pxe_unload_stack_pkt.status],byte PXENV_STATUS_SUCCESS
+		mov al,02h			; ERROR 02
 		jne .cant_free
 
-		mov ax,[RealBaseMem]
-		cmp ax,[BIOS_fbm]		; Sanity check
+		; Use UNDI CLEANUP for PXE 1, STOP BASE/STOP UNDI for PXE 2
+		cmp byte [APIVer+1], 2
+		jb .old_api
+
+		; These calls don't exist in PXE 1
+.new_api:
+%if 0
+		cmp word [APIVer], 0201h
+		jb .old_api
+		mov bx,PXENV_STOP_BASE
+		mov di,pxe_undi_cleanup_pkt	; Same packet for both calls
+		call far [PXENVEntry]
+		mov al,09h
+		jc .cant_free
+		cmp word [pxe_undi_cleanup_pkt.status],byte PXENV_STATUS_SUCCESS
+		mov al,0Ah
+		jne .cant_free
+
+%endif
+		mov bx,PXENV_STOP_UNDI
+		mov di,pxe_undi_cleanup_pkt	; Same packet for both calls
+		call far [PXENVEntry]
+		mov al,03h
+		jc .cant_free			; ERROR 03
+		cmp word [pxe_undi_cleanup_pkt.status],byte PXENV_STATUS_SUCCESS
+		mov al,04h			; ERROR 04
+		jne .cant_free
+		jmp .common
+
+.old_api:
+		mov bx,PXENV_UNDI_CLEANUP
+		mov di,pxe_undi_cleanup_pkt
+		call far [PXENVEntry]
+		mov al,07h
+		jc .cant_free
+		cmp word [pxe_undi_cleanup_pkt.status],byte PXENV_STATUS_SUCCESS
+		mov al,08h
+		jne .cant_free
+.common:
+
+		mov dx,[RealBaseMem]
+		cmp dx,[BIOS_fbm]		; Sanity check
+		mov al,05h			; ERROR 05
 		jna .cant_free
 
 		; Check that PXE actually unhooked the INT 1Ah chain
@@ -1949,18 +2010,25 @@ unload_pxe:
 		shl ecx,4
 		add ebx,ecx
 		shr ebx,10
-		cmp bx,ax			; Not in range
+		cmp bx,dx			; Not in range
 		jae .ok
 		cmp bx,[BIOS_fbm]
+		mov al,06h			; ERROR 06
 		jae .cant_free		
 
 .ok:
-		mov [BIOS_fbm],ax
+		mov [BIOS_fbm],dx
 		ret
 		
 .cant_free:
 		mov si,cant_free_msg
-		jmp writestr
+		call writestr
+		call writehex2
+		mov al,' '
+		call writechr
+		mov eax,[4*0x1a]
+		call writehex8
+		jmp crlf
 
 ;
 ; gendotquad
@@ -2104,21 +2172,21 @@ parse_dhcp_options:
 		jne .not_subnet
 		mov edx,[si]
 		mov [Netmask],edx
-		jmp .opt_done
+		jmp short .opt_done
 .not_subnet:
 
 		cmp dl,3	; ROUTER option
 		jne .not_router
 		mov edx,[si]
 		mov [Gateway],edx
-		jmp .opt_done
+		jmp short .opt_done
 .not_router:
 
 		cmp dl,52	; OPTION OVERLOAD option
 		jne .not_overload
 		mov dl,[si]
 		mov [OverLoad],dl
-		jmp .opt_done
+		jmp short .opt_done
 .not_overload:
 
 		cmp dl,67	; BOOTFILE NAME option
@@ -2227,7 +2295,6 @@ writestr	equ cwritestr
 %include "loadhigh.inc"		; Load a file into high memory
 %include "font.inc"		; VGA font stuff
 %include "graphics.inc"		; VGA graphics
-%include "highmem.inc"		; High memory sizing
 
 ; -----------------------------------------------------------------------------
 ;  Begin data section
@@ -2244,6 +2311,15 @@ boot_prompt	db 'boot: ', 0
 wipe_char	db BS, ' ', BS, 0
 err_notfound	db 'Could not find kernel image: ',0
 err_notkernel	db CR, LF, 'Invalid or corrupt kernel image.', CR, LF, 0
+err_not386	db 'It appears your computer uses a 286 or lower CPU.'
+		db CR, LF
+		db 'You cannot run Linux unless you have a 386 or higher CPU'
+		db CR, LF
+		db 'in your machine.  If you get this message in error, hold'
+		db CR, LF
+		db 'down the Ctrl key while booting, and I will take your'
+		db CR, LF
+		db 'word for it.', CR, LF, 0
 err_noram	db 'It appears your computer has less than 384K of low ("DOS")'
 		db 0Dh, 0Ah
 		db 'RAM.  Linux needs at least this amount to boot.  If you get'
@@ -2279,7 +2355,7 @@ undi_data_msg	  db 'UNDI data segment at:   ',0
 undi_data_len_msg db 'UNDI data segment size: ',0 
 undi_code_msg	  db 'UNDI code segment at:   ',0
 undi_code_len_msg db 'UNDI code segment size: ',0 
-cant_free_msg	db 'Failed to free base memory, sorry...', CR, LF, 0
+cant_free_msg	db 'Failed to free base memory, error ', 0
 notfound_msg	db 'not found', CR, LF, 0
 myipaddr_msg	db 'My IP address seems to be ',0
 tftpprefix_msg	db 'TFTP prefix: ', 0
@@ -2385,6 +2461,9 @@ pxe_unload_stack_pkt:
 .reserved:	times 10 db 0		; Reserved
 
 pxe_undi_shutdown_pkt:
+.status:	dw 0			; Status
+
+pxe_undi_cleanup_pkt:
 .status:	dw 0			; Status
 
 ;
