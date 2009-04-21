@@ -24,6 +24,7 @@
 #include <syslinux/config.h>
 
 #include "menu.h"
+#include "hashtbl.h"
 
 /* Empty refstring */
 const char *empty_string;
@@ -74,20 +75,67 @@ const char * const kernel_types[] = {
   NULL
 };
 
+static struct hash_table label_hash;
+static struct hash_table menu_hash;
+
+/*
+ * Set up or return a reference to a specific label.
+ * Consumes a reference count.
+ */
+static struct menu_entry *label_ref(const char *label)
+{
+  struct hash_symbol *hs;
+  struct menu_entry *me;
+  struct hash_insert hi;
+
+  hs = hash_find(&label_hash, label, &hi);
+  if (hs) {
+    refstr_put(label);
+    return container_of(hs, struct menu_entry, l);
+  }
+
+  /* Unresolved reference; create a placeholder entry. */
+  me = zalloc(sizeof *me);
+  me->l.key = label;		/* Retains the reference */
+
+  hash_add(&hi, me);
+  return me;
+}
+
+/*
+ * Set up or return a reference to a specific menu.
+ * Consumes a reference count.
+ */
+static struct menu *menu_ref(const char *label)
+{
+  struct hash_symbol *hs;
+  struct menu *m;
+  struct hash_insert hi;
+
+  hs = hash_find(&menu_hash, label, &hi);
+  if (hs) {
+    refstr_put(label);
+    return container_of(hs, struct menu, l);
+  }
+
+  /* Unresolved reference; create a placeholder entry. */
+  m = zalloc(sizeof *m);
+  m->l.key = label;		/* Retains the reference */
+
+  hash_add(&hi, m);
+  return m;
+}
+
 /*
  * Search the list of all menus for a specific label
  */
 static struct menu *
 find_menu(const char *label)
 {
-  struct menu *m;
+  struct menu **mp;
 
-  for (m = menu_list; m; m = m->next) {
-    if (!strcmp(label, m->label))
-      return m;
-  }
-
-  return NULL;
+  mp = (struct menu **)hash_find(&menu_hash, label, NULL);
+  return mp ? *mp : NULL;
 }
 
 #define MAX_LINE 4096
@@ -156,17 +204,23 @@ static struct menu * new_menu(struct menu *parent,
 {
   struct menu *m = calloc(1, sizeof(struct menu));
   int i;
+  struct hash_insert hi;
 
   m->label = label;
   m->title = refstr_get(empty_string);
+  
+  if (!hash_find(&menu_hash, label, &hi))
+    hash_add(&hi, label, m);
+
+  /* We always have a parent entry for bookkeeping purposes */
+  m->parent_entry = parent_entry;
+  parent_entry->action = MA_SUBMENU;
+  parent_entry->submenu = m;
 
   if (parent) {
-    /* Submenu */
+    /* An actual submenu */
     m->parent = parent;
-    m->parent_entry = parent_entry;
-    parent_entry->action = MA_SUBMENU;
-    parent_entry->submenu = m;
-
+  
     for (i = 0; i < MSG_COUNT; i++)
       m->messages[i] = refstr_get(parent->messages[i]);
 
@@ -221,7 +275,7 @@ struct labeldata {
   unsigned int menuindent;
   enum menu_action action;
   int save;
-  struct menu *submenu;
+  struct menu_entry *menuref;
 };
 
 /* Menu currently being parsed */
@@ -240,9 +294,10 @@ clear_label_data(struct labeldata *ld)
   memset(ld, 0, sizeof *ld);
 }
 
-static struct menu_entry *new_entry(struct menu *m)
+static struct menu_entry *new_entry(struct menu *m, const char *label)
 {
   struct menu_entry *me;
+  const char *nl;
 
   if (m->nentries >= m->nentries_space) {
     if (!m->nentries_space)
@@ -254,9 +309,17 @@ static struct menu_entry *new_entry(struct menu *m)
 			      sizeof(struct menu_entry *));
   }
 
-  me = calloc(1, sizeof(struct menu_entry));
+  refstr_get(label);
+  while (me = label_ref(label), me->action != MA_UNDEF) {
+    /* Duplicate label, generate synthetic name that can't collide */
+    rsprintf(&nl, "%s\n%d", label, ++me->collision);
+    refstr_put(label);
+    label = nl;
+  }
+
   me->menu = m;
   me->entry = m->nentries;
+  me->label = label;
   m->menu_entries[m->nentries++] = me;
   *all_entries_end = me;
   all_entries_end = &me->next;
@@ -298,7 +361,7 @@ record(struct menu *m, struct labeldata *ld, const char *append)
     const char *a;
     char *s;
 
-    me = new_entry(m);
+    me = new_entry(m, ld->label);
 
     me->displayname = ld->menulabel
       ? refstr_get(ld->menulabel) : refstr_get(ld->label);
@@ -364,14 +427,9 @@ record(struct menu *m, struct labeldata *ld, const char *append)
       }
       break;
 
-    case MA_GOTO_UNRES:
-    case MA_EXIT_UNRES:
-      me->cmdline = refstr_get(ld->kernel);
-      break;
-
     case MA_GOTO:
     case MA_EXIT:
-      me->submenu = ld->submenu;
+      me->menuref = ld->menuref;
       break;
 
     default:
@@ -404,8 +462,9 @@ static struct menu *end_submenu(void)
 
 static struct menu_entry *find_label(const char *str)
 {
-  const char *p;
+  const char *p, op;
   struct menu_entry *me;
+  struct menu_entry **lrp;
   int pos;
 
   p = str;
@@ -413,14 +472,12 @@ static struct menu_entry *find_label(const char *str)
     p++;
 
   /* p now points to the first byte beyond the kernel name */
-  pos = p-str;
+  op = *p;
+  *(char *)p = '\0';		/* Ugly, but works in our environment */
+  lrp = hash_find(&label_hash, str, NULL);
+  *(char *)p = op;
 
-  for (me = all_entries; me; me = me->next) {
-    if (!strncmp(str, me->label, pos) && !me->label[pos])
-      return me;
-  }
-
-  return NULL;
+  return lrp ? *lrp : NULL;
 }
 
 static const char *unlabel(const char *str)
@@ -429,25 +486,19 @@ static const char *unlabel(const char *str)
   const char *p;
   const char *q;
   struct menu_entry *me;
-  int pos;
+  
+  me = find_label(str);
+  if (!me)
+    return str;
 
+  /* Found matching label */
   p = str;
   while ( *p && !my_isspace(*p) )
     p++;
 
-  /* p now points to the first byte beyond the kernel name */
-  pos = p-str;
-
-  for (me = all_entries; me; me = me->next) {
-    if (!strncmp(str, me->label, pos) && !me->label[pos]) {
-      /* Found matching label */
-      rsprintf(&q, "%s%s", me->cmdline, p);
-      refstr_put(str);
-      return q;
-    }
-  }
-
-  return str;
+  rsprintf(&q, "%s%s", me->cmdline, p);
+  refstr_put(str);
+  return q;
 }
 
 static const char *
@@ -812,21 +863,21 @@ static void parse_config_file(FILE *f)
 	  ld.action = MA_QUIT;
       } else if ( looking_at(p, "goto") ) {
 	if (ld.label) {
-	  ld.action = MA_GOTO_UNRES;
-	  refstr_put(ld.kernel);
-	  ld.kernel = refstrdup(skipspace(p+4));
+	  ld.action = MA_GOTO;
+	  if (*p) {
+	    ld.menuref = label_ref(skipspace(p+4));
+	  }
 	}
       } else if ( looking_at(p, "exit") ) {
 	p = skipspace(p+4);
-	if (ld.label && m->parent) {
+	if (ld.label) {
+	  ld.action = MA_EXIT;
 	  if (*p) {
 	    /* This is really just a goto, except for the marker */
-	    ld.action = MA_EXIT_UNRES;
-	    refstr_put(ld.kernel);
-	    ld.kernel = refstrdup(p);
-	  } else {
-	    ld.action = MA_EXIT;
-	    ld.submenu = m->parent;
+	    ld.menuref = label_ref(p);
+	  } else if (m->parent) {
+	    /* True exit */
+	    ld.menuref = m->parent->parententry;
 	  }
 	}
       } else if ( looking_at(p, "start") ) {
@@ -1010,6 +1061,9 @@ void parse_configs(char **argv)
   struct menu_entry *me;
 
   empty_string = refstrdup("");
+
+  hash_init(&label_hash, HASH_MEDIUM);
+  hash_init(&menu_hash,  HASH_SMALL);
 
   /* Initialize defaults for the root and hidden menus */
   hide_menu = new_menu(NULL, NULL, refstrdup(".hidden"));

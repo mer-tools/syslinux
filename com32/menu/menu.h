@@ -27,6 +27,7 @@
 #include <colortbl.h>
 #include <stdbool.h>
 #include "refstr.h"
+#include "hashtbl.h"
 
 #ifndef CLK_TCK
 # define CLK_TCK sysconf(_SC_CLK_TCK)
@@ -34,30 +35,27 @@
 
 struct menu;
 
-/* Note: the _UNRES variants must always be immediately after their
-   "normal" versions. */
 enum menu_action {
-  MA_NONE,			/* Undefined value */
+  MA_UNDEF,			/* Unresolved entry */
   MA_CMD,			/* Execute a command */
   MA_DISABLED,			/* Disabled menu entry */
   MA_SUBMENU,			/* This is a submenu entry */
   MA_GOTO,			/* Go to another menu */
-  MA_GOTO_UNRES,		/* Unresolved go to */
   MA_QUIT,			/* Quit to CLI */
   MA_EXIT,			/* Exit to higher-level menu */
-  MA_EXIT_UNRES,		/* Unresolved exit */
 };
 
 struct menu_entry {
+  struct hash_symbol l;		/* Label and hash entry */
   struct menu *menu;		/* Parent menu */
   const char *displayname;
-  const char *label;
   const char *passwd;
   char *helptext;
   const char *cmdline;
   struct menu *submenu;
-  struct menu_entry *next;	/* Linked list of all labels across menus */
+  struct menu_entry *menuref;	/* Reference for GOTO or EXIT */
   int entry;			/* Entry number inside menu */
+  int collision;		/* Collision counter (for synthetic labels) */
   enum menu_action action;
   unsigned char hotkey;
   bool save;			/* Save this entry if selected */
@@ -136,8 +134,7 @@ struct fkey_help {
 };
 
 struct menu {
-  struct menu *next;		/* Linked list of all menus */
-  const char *label;		/* Goto label for this menu */
+  struct hash_symbol l;		/* Label and hash table entry */
   struct menu *parent;
   struct menu_entry *parent_entry; /* Entry for self in parent */
 
@@ -152,6 +149,7 @@ struct menu {
   int defentry;
   int timeout;
 
+  bool defined;			/* This menu is actually defined... */
   bool allowedit;
   bool save;			/* MENU SAVE default for this menu */
 
