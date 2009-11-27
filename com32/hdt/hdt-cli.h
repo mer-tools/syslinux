@@ -89,10 +89,10 @@ typedef enum {
 
 #define PROMPT_SIZE 32
 #define MAX_HISTORY_SIZE 32
+#define INPUT hdt_cli.history[hdt_cli.history_pos]
 struct s_cli {
     cli_mode_t mode;
     char prompt[PROMPT_SIZE];
-    char input[MAX_LINE_SIZE];
     uint8_t cursor_pos;
     char history[MAX_HISTORY_SIZE][MAX_LINE_SIZE];
     int history_pos;
@@ -158,6 +158,9 @@ void set_mode(cli_mode_t mode, struct s_hardware *hardware);
 void start_cli_mode(struct s_hardware *hardware);
 void start_auto_mode(struct s_hardware *hardware);
 void main_show(char *item, struct s_hardware *hardware);
+
+#define CLI_HISTORY "history"
+void print_history();
 
 // DMI STUFF
 #define CLI_DMI_BASE_BOARD "base_board"
