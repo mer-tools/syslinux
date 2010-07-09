@@ -127,11 +127,21 @@ static inline void cli(void)
     asm volatile("cli");
 }
 
+static inline void cpu_relax(void)
+{
+    asm volatile("rep;nop");
+}
+
 /* Decompression */
 extern int check_zip(void *indata, uint32_t size, uint32_t * zbytes_p,
 		     uint32_t * dbytes_p, uint32_t * orig_crc,
 		     uint32_t * offset_p);
 extern void *unzip(void *indata, uint32_t zbytes, uint32_t dbytes,
 		   uint32_t orig_crc, void *target);
+
+/* ACPI hacking */
+size_t acpi_bytes_needed(void);
+void acpi_hack_dsdt(void *membuf, const void *mbft, uint32_t mbft_size,
+		    const void *data, uint32_t data_size);
 
 #endif

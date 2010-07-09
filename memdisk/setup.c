@@ -114,23 +114,78 @@ static const char *getcmditem(const char *what)
     return CMD_NOTFOUND;
 }
 
+extern const char _end[];		/* Symbol signalling end of data */
+
+static size_t find_memory_region(size_t size, size_t align)
+{
+    uint32_t startrange, endrange;
+    size_t align_mask = align-1;
+    int i;
+
+    /*
+     * Search memory ranges in descending order until we find one
+     * that is legal and fits
+     */
+    for (i = nranges - 1; i >= 0; i--) {
+	/*
+	 * We can't use > 4G memory (32 bits only.)  Truncate to 2^32-1
+	 * so we don't have to deal with funny wraparound issues.
+	 */
+	
+	/* Must be memory */
+	if (ranges[i].type != 1)
+	    continue;
+	
+	/* Range start */
+	if (ranges[i].start >= 0xFFFFFFFF)
+	    continue;
+	
+	startrange = (uint32_t) ranges[i].start;
+	
+	/* Range end (0 for end means 2^64) */
+	endrange = ((ranges[i + 1].start >= 0xFFFFFFFF ||
+		     ranges[i + 1].start == 0)
+		    ? 0xFFFFFFFF : (uint32_t) ranges[i + 1].start);
+	
+	/* Make sure we don't overwrite ourselves */
+	if (startrange < (size_t) _end)
+	    startrange = (size_t) _end;
+	
+	/* Allow for alignment */
+	startrange = (ranges[i].start + align_mask) & ~align_mask;
+	
+	/* In case we just killed the whole range... */
+	if (startrange >= endrange)
+	    continue;
+	
+	/*
+	 * Must be large enough... don't rely on gzwhere for this
+	 * (wraparound)
+	 */
+	if (endrange - startrange < size)
+	    continue;
+
+	/*
+	 * Found an acceptable address...
+	 */
+	return ((endrange - size) & ~align_mask);
+    }
+
+    return 0;			/* Nothing found! */
+}
+
 /*
  * Check to see if this is a gzip image
  */
 #define UNZIP_ALIGN 512
 
-extern void _end;		/* Symbol signalling end of data */
-
-void unzip_if_needed(uint32_t * where_p, uint32_t * size_p)
+static void unzip_if_needed(uint32_t * where_p, uint32_t * size_p)
 {
     uint32_t where = *where_p;
     uint32_t size = *size_p;
     uint32_t zbytes;
-    uint32_t startrange, endrange;
     uint32_t gzdatasize, gzwhere;
     uint32_t orig_crc, offset;
-    uint32_t target = 0;
-    int i, okmem;
 
     /* Is it a gzip image? */
     if (check_zip((void *)where, size, &zbytes, &gzdatasize,
@@ -148,87 +203,48 @@ void unzip_if_needed(uint32_t * where_p, uint32_t * size_p)
 	 * Find a good place to put it: search memory ranges in descending
 	 * order until we find one that is legal and fits
 	 */
-	okmem = 0;
-	for (i = nranges - 1; i >= 0; i--) {
+	gzwhere = find_memory_region(gzdatasize, UNZIP_ALIGN);
+	if (!gzwhere)
+	    goto nomem;
+
+	/* Mark the memory reserved */
+	insertrange(gzwhere, gzdatasize, 2);
+
+	/* Cast to uint64_t just in case we're flush with the top byte */
+	if ((uint64_t) where + size >= gzwhere &&
+	    where < (uint64_t)gzwhere + gzdatasize) {
 	    /*
-	     * We can't use > 4G memory (32 bits only.)  Truncate to 2^32-1
-	     * so we don't have to deal with funny wraparound issues.
+	     * Need to move source data to avoid compressed/uncompressed
+	     * overlap
 	     */
-
-	    /* Must be memory */
-	    if (ranges[i].type != 1)
-		continue;
-
-	    /* Range start */
-	    if (ranges[i].start >= 0xFFFFFFFF)
-		continue;
-
-	    startrange = (uint32_t) ranges[i].start;
-
-	    /* Range end (0 for end means 2^64) */
-	    endrange = ((ranges[i + 1].start >= 0xFFFFFFFF ||
-			 ranges[i + 1].start == 0)
-			? 0xFFFFFFFF : (uint32_t) ranges[i + 1].start);
-
-	    /* Make sure we don't overwrite ourselves */
-	    if (startrange < (uint32_t) & _end)
-		startrange = (uint32_t) & _end;
-
-	    /* Allow for alignment */
-	    startrange =
-		(ranges[i].start + (UNZIP_ALIGN - 1)) & ~(UNZIP_ALIGN - 1);
-
-	    /* In case we just killed the whole range... */
-	    if (startrange >= endrange)
-		continue;
-
-	    /*
-	     * Must be large enough... don't rely on gzwhere for this
-	     * (wraparound)
-	     */
-	    if (endrange - startrange < gzdatasize)
-		continue;
-
-	    /*
-	     * This is where the gz image would be put if we put it in this
-	     * range...
-	     */
-	    gzwhere = (endrange - gzdatasize) & ~(UNZIP_ALIGN - 1);
-
-	    /* Cast to uint64_t just in case we're flush with the top byte */
-	    if ((uint64_t) where + size >= gzwhere && where < endrange) {
-		/*
-		 * Need to move source data to avoid compressed/uncompressed
-		 * overlap
-		 */
-		uint32_t newwhere;
-
-		if (gzwhere - startrange < size)
-		    continue;	/* Can't fit both old and new */
-
-		newwhere = (gzwhere - size) & ~(UNZIP_ALIGN - 1);
-		printf("Moving compressed data from 0x%08x to 0x%08x\n",
-		       where, newwhere);
-
-		memmove((void *)newwhere, (void *)where, size);
-		where = newwhere;
-	    }
-
-	    target = gzwhere;
-	    okmem = 1;
-	    break;
+	    uint32_t newwhere;
+	    
+	    newwhere = find_memory_region(size, UNZIP_ALIGN);
+	    if (!newwhere)
+		goto nomem;
+	    
+	    printf("Moving compressed data from 0x%08x to 0x%08x\n",
+		   where, newwhere);
+	    
+	    memmove((void *)newwhere, (void *)where, size);
+	    where = newwhere;
 	}
 
-	if (!okmem)
-	    die("Not enough memory to decompress image (need 0x%08x bytes)\n",
-		gzdatasize);
-
 	printf("gzip image: decompressed addr 0x%08x, len 0x%08x: ",
-	       target, gzdatasize);
+	       gzwhere, gzdatasize);
 
 	*size_p = gzdatasize;
 	*where_p = (uint32_t) unzip((void *)(where + offset), zbytes,
-				    gzdatasize, orig_crc, (void *)target);
+				    gzdatasize, orig_crc, (void *)gzwhere);
+	return;
+
+    nomem:
+	die("Not enough memory to decompress image (need 0x%08x bytes)\n",
+	    gzdatasize);
+    } else {
+	/* Just reserve the uncompressed data */
+	insertrange(where, size, 2);
+	return;
     }
 }
 
@@ -737,6 +753,7 @@ void setup(const struct real_mode_args *rm_args_ptr)
     int no_bpt;			/* No valid BPT presented */
     uint32_t boot_seg = 0;	/* Meaning 0000:7C00 */
     uint32_t boot_len = 512;	/* One sector */
+    size_t acpi_bytes = 0, acpi_base = 0;
 
     /* We need to copy the rm_args into their proper place */
     memcpy(&rm_args, rm_args_ptr, sizeof rm_args);
@@ -795,8 +812,20 @@ void setup(const struct real_mode_args *rm_args_ptr)
 	}
     }
 
-    /* Reserve the ramdisk memory */
-    insertrange(ramdisk_image, ramdisk_size, 2);
+    /* Allocate ACPI memory, if needed */
+    if (getcmditem("noacpi") == CMD_NOTFOUND) {
+	acpi_bytes = acpi_bytes_needed();
+	if (acpi_bytes) {
+	    acpi_base = find_memory_region(acpi_bytes, 16);
+	    if (!acpi_base) {
+		printf("ACPI: cannot allocate memory, skipping ACPI hook\n");
+		acpi_bytes = 0;
+	    } else {
+		insertrange(acpi_base, acpi_bytes, 4);
+	    }
+	}
+    }
+
     parse_mem();		/* Recompute variables */
 
     /* Figure out where it needs to go */
@@ -1002,6 +1031,18 @@ void setup(const struct real_mode_args *rm_args_ptr)
 	ranges[--nranges].type = -1;
     }
 
+    int i;
+
+    for (i = 0; i < nranges; i++)
+	if (ranges[i].type) {
+	    uint64_t base = ranges[i].start;
+	    uint64_t size = ranges[i+1].start - ranges[i].start;
+	    printf("e820: %08x%08x %08x%08x %d\n",
+		   (uint32_t) (base >> 32), (uint32_t) base,
+		   (uint32_t) (size >> 32), (uint32_t) size,
+		   ranges[i].type);
+	}
+
     if (getcmditem("nopassany") != CMD_NOTFOUND) {
 	printf("nopassany specified - we're the only drive of any kind\n");
 	bios_drives = 0;
@@ -1149,6 +1190,12 @@ void setup(const struct real_mode_args *rm_args_ptr)
     printf("new: int13 = %08x  int15 = %08x  int1e = %08x\n",
 	   rdz_32(BIOS_INT13), rdz_32(BIOS_INT15), rdz_32(BIOS_INT1E));
 
+    /* Hook ACPI */
+    if (acpi_bytes) {
+	acpi_hack_dsdt((void *)acpi_base, mbft, mbft->acpi.length,
+		       (const void *)ramdisk_image, ramdisk_size);
+    }
+
     /* Figure out entry point */
     if (!boot_seg) {
 	boot_base = 0x7c00;
@@ -1186,4 +1233,3 @@ void setup(const struct real_mode_args *rm_args_ptr)
     shdr->esdi = pnp_install_check();
     shdr->edx = geometry->driveno;
 }
-

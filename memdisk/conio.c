@@ -17,8 +17,46 @@
  */
 
 #include <stdint.h>
+#include <sys/io.h>
 #include "memdisk.h"
 #include "conio.h"
+
+#ifdef DEBUG
+
+enum serial_port_regs {
+    THR = 0,
+    RBR = 0,
+    DLL = 0,
+    DLM = 1,
+    IER = 1,
+    IIR = 2,
+    FCR = 2,
+    LCR = 3,
+    MCR = 4,
+    LSR = 5,
+    MSR = 6,
+    SCR = 7,
+};
+
+#ifndef DEBUG_PORT
+# define DEBUG_PORT 0x03f8	/* I/O base address */
+#endif
+
+static const uint16_t debug_base = DEBUG_PORT;
+
+static void debug_putc(char c)
+{
+    if (c == '\n')
+	debug_putc('\r');
+
+    while ((inb(debug_base + LSR) & 0x20) == 0)
+	cpu_relax();
+    outb(c, debug_base + THR);
+}
+
+#else
+#define debug_putc(x) ((void)(x))
+#endif
 
 int putchar(int ch)
 {
@@ -28,6 +66,8 @@ int putchar(int ch)
 	/* \n -> \r\n */
 	putchar('\r');
     }
+
+    debug_putc(ch);
 
     regs.eax.w[0] = 0x0e00 | (ch & 0xff);
     intcall(0x10, &regs, NULL);
