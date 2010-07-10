@@ -165,6 +165,7 @@ size_t acpi_bytes_needed(void)
 {
     struct acpi_rsdp *rsdp;
     struct acpi_description_header *dsdt;
+    bool rsdp_writable;
     int i, n;
 
     rsdp = find_rsdp();
@@ -172,6 +173,27 @@ size_t acpi_bytes_needed(void)
 	printf("ACPI: unable to locate an ACPI RSDP\n");
 	return 0;
     }
+
+    /* Check to see if the RSDP is writable */
+    if (0 && (size_t)rsdp < 0xa0000) {
+	rsdp_writable = true;
+    } else {
+	size_t t1, t2;
+
+	asm volatile(
+	    "cli ; "
+	    "movl %2,%0 ; "
+	    "xorl $-1,%2 ; "
+	    "movl %2,%1 ; "
+	    "movl %0,%2 ; "
+	    "sti"
+	    : "=r" (t1), "=r" (t2)
+	    : "m" (rsdp->rsdt_addr));
+
+	rsdp_writable = (t1 ^ t2) == -1;
+    }
+
+    printf("ACPI: RSDP is %s\n", rsdp_writable ? "writable" : "readonly");
 
     rsdt = (struct acpi_rsdt *)rsdp->rsdt_addr;
     if (is_valid_table(rsdt) != ERR_NONE) {
