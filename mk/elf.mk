@@ -35,7 +35,7 @@ com32 = $(topdir)/com32
 core = $(topdir)/core
 
 ifneq ($(NOGPL),1)
-GPLLIB     = $(com32)/gpllib/libgpl.c32
+GPLLIB     = $(com32)/gpllib/libgpl.elf
 GPLINCLUDE = -I$(com32)/gplinclude
 else
 GPLLIB     =
@@ -54,8 +54,8 @@ LNXCFLAGS  = -I$(com32)/libutil/include -W -Wall -O -g -D_GNU_SOURCE
 LNXSFLAGS  = -g
 LNXLDFLAGS = -g
 
-C_LIBS	   = $(com32)/libutil/libutil.c32 $(GPLLIB) \
-	     $(com32)/lib/libcom32.c32
+C_LIBS	   = $(com32)/libutil/libutil.elf $(GPLLIB) \
+	     $(com32)/lib/libcom32.elf
 C_LNXLIBS  = $(com32)/libutil/libutil_lnx.a \
 	     $(com32)/elflink/ldlinux/ldlinux_lnx.a
 
@@ -86,4 +86,7 @@ C_LNXLIBS  = $(com32)/libutil/libutil_lnx.a \
 	$(LD) $(LDFLAGS) -o $@ $^
 
 %.c32: %.elf
-	$(OBJCOPY) --strip-debug --strip-unneeded $< $@
+	$(OBJCOPY) --strip-debug --strip-unneeded $< $*.tmp
+	$(MKMODULE) $*.tmp $@
+	rm -f $*.tmp
+

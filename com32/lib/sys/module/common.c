@@ -9,12 +9,18 @@
 #include <elf.h>
 #include <string.h>
 #include <fs.h>
+#include <syslinux/loadfile.h>
+#include <syslinux/slzm.h>
 
 #include <linux/list.h>
 #include <sys/module.h>
 
 #include "elfutils.h"
 #include "common.h"
+
+__extern int lzo1x_decompress_fast_safe(const void *src, unsigned int src_len,
+					void *dst, unsigned int *dst_len,
+					void *wrkmem);
 
 /**
  * The one and only list of loaded modules
@@ -103,71 +109,120 @@ again:
 
 int image_load(struct elf_module *module)
 {
-	module->u.l._file = findpath(module->name);
+	void *zdata, *mdata;
+	size_t zlen, mlen;
+	const struct slzm_header *hdr;
+	FILE *f;
+	int zr;
+	int rv = -1;
 
-	if (module->u.l._file == NULL) {
-		DBG_PRINT("Could not open object file '%s'\n", module->name);
+	zdata = mdata = NULL;
+	f = NULL;
+
+	memset(&module->u.l, 0, sizeof module->u.l);
+
+	f = findpath(module->name);
+
+	if (!f) {
+		DBG_PRINT("Could not open module file '%s'\n", module->name);
 		goto error;
 	}
 
-	module->u.l._cr_offset = 0;
-
-	return 0;
-
-error:
-	if (module->u.l._file != NULL) {
-		fclose(module->u.l._file);
-		module->u.l._file = NULL;
+	if (floadfile(f, &zdata, &zlen, NULL, 0)) {
+		DBG_PRINT("Could not read module file '%s'\n", module->name);
+		goto error;
 	}
 
-	return -1;
+	fclose(f);
+	f = NULL;
+
+	hdr = zdata;
+	if (zlen < sizeof *hdr) {
+		dprintf("%s: file too short\n", module->name);
+		goto error;
+	}
+
+	zlen -= sizeof *hdr;
+
+	if (hdr->magic[0] != SLZM_MAGIC1 || hdr->magic[1] != SLZM_MAGIC2 ||
+	    hdr->platform != SLZM_PLATFORM || hdr->arch != SLZM_ARCH ||
+	    zlen < hdr->zsize) {
+		dprintf("%s: bad header\n", module->name);
+		goto error;
+	}
+
+	mlen = hdr->usize + 15;
+	mdata = malloc(mlen);
+	if (!mdata) {
+		dprintf("%s: failed to allocate mdata buffer\n",
+			module->name);
+		goto error;
+	}
+	
+	zr = lzo1x_decompress_fast_safe((const char *)zdata + sizeof *hdr,
+					hdr->zsize, mdata, &mlen, NULL);
+	if (zr) {
+		dprintf("%s: decompression returned error %d\n",
+			module->name, zr);
+		goto error;
+	}
+
+	if (mlen != hdr->usize) {
+		dprintf("%s: decompression returned %zu bytes expected %u\n",
+			module->name, mlen, hdr->usize);
+		goto error;
+	}
+
+	module->u.l.buf = mdata;
+	module->u.l.len = mlen;
+	mdata = NULL;		/* Don't free */
+	rv = 0;
+
+error:
+	if (mdata)
+		free(mdata);
+	if (zdata)
+		free(zdata);
+	if (f)
+		fclose(f);
+
+	return rv;
 }
 
 
 int image_unload(struct elf_module *module) {
-	if (module->u.l._file != NULL) {
-		fclose(module->u.l._file);
-		module->u.l._file = NULL;
-
+	if (module->u.l.buf) {
+		free(module->u.l.buf);
+		memset(&module->u.l, 0, sizeof module->u.l);
 	}
-	module->u.l._cr_offset = 0;
-
 	return 0;
 }
 
 int image_read(void *buff, size_t size, struct elf_module *module) {
-	size_t result = fread(buff, size, 1, module->u.l._file);
-
-	if (result < 1)
+	if (size > module->u.l.len - module->u.l.cr_offset)
 		return -1;
 
-	module->u.l._cr_offset += size;
+	memcpy(buff, (const char *)module->u.l.buf + module->u.l.cr_offset,
+	       size);
+
+	module->u.l.cr_offset += size;
 	return 0;
 }
 
 int image_skip(size_t size, struct elf_module *module) {
-	void *skip_buff = NULL;
-	size_t result;
-
-	if (size == 0)
-		return 0;
-
-	skip_buff = malloc(size);
-	result = fread(skip_buff, size, 1, module->u.l._file);
-	free(skip_buff);
-
-	if (result < 1)
+	if (size > module->u.l.len - module->u.l.cr_offset)
 		return -1;
 
-	module->u.l._cr_offset += size;
+	module->u.l.cr_offset += size;
 	return 0;
 }
 
 int image_seek(Elf32_Off offset, struct elf_module *module) {
-	if (offset < module->u.l._cr_offset) // Cannot seek backwards
+	if (offset >= module->u.l.len) // Cannot seek backwards
 		return -1;
 
-	return image_skip(offset - module->u.l._cr_offset, module);
+	module->u.l.cr_offset = offset;
+	return 0;
 }
 
 

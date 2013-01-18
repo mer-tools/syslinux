@@ -18,7 +18,7 @@ INCLUDES += -I./include
 
 LIBOBJS = $(patsubst %.c,%.o,$(wildcard src/*.c))
 LIB     = lzo.a
-BINS    = prepcore
+BINS    = prepcore mkmodule
 
 all : $(BINS)
 
@@ -28,6 +28,9 @@ $(LIB) : $(LIBOBJS)
 	$(RANLIB) $@
 
 prepcore : prepcore.o $(LIB)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+mkmodule : mkmodule.o $(LIB)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 tidy dist clean spotless:

@@ -14,7 +14,7 @@
 ## samples for syslinux users
 ##
 
-LIBS = $(com32)/libutil/libutil.c32
+LIBS = $(com32)/libutil/libutil.elf
 
 topdir = ../..
 MAKEDIR = $(topdir)/mk

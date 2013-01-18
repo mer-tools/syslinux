@@ -25,12 +25,12 @@ LNXLIBS	   =
 #GCCWARN	  += -Wno-error
 
 CFLAGS    += -DSYSLINUX
-MODULES	  = lua.c32
+MODULES	  = lua.c32 liblua.c32
 TESTFILES =
 
 OBJS	  = lua.o
 
-LIBLUA    = liblua.c32
+LIBLUA    = liblua.elf
 
 LIBLUA_OBJS := lapi.o lcode.o ldebug.o ldo.o ldump.o lfunc.o
 LIBLUA_OBJS += lgc.o llex.o lmem.o  lobject.o lopcodes.o lparser.o
@@ -50,7 +50,7 @@ CFLAGS += -DLUA_ANSI
 
 all: $(MODULES) $(TESTFILES)
 
-liblua.elf : $(LIBLUA_OBJS)
+$(LIBLUA) : $(LIBLUA_OBJS)
 	$(LD) $(LDFLAGS) -shared -soname $(patsubst %.elf,%.c32,$(@F)) \
 		-o $@ $^
 

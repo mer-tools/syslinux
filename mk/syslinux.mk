@@ -65,6 +65,8 @@ MKISOFS  = mkisofs
 SED	 = sed
 WGET	 = wget
 
+MKMODULE = $(topdir)/lzo/mkmodule
+
 com32    = $(topdir)/com32
 
 # Common warnings we want for all gcc-generated code

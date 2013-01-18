@@ -109,8 +109,9 @@ struct elf_module {
 	union {
 		// Transient - Data available while the module is loading
 		struct {
-			FILE		*_file;		// The file object of the open file
-			Elf32_Off	_cr_offset;	// The current offset in the open file
+			void		*buf;		// Buffer to data
+			size_t		len;		// Length of data
+			size_t		cr_offset;	// The current offset
 		} l;
 
 		// Process execution data

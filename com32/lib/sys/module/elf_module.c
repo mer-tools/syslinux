@@ -132,28 +132,15 @@ static int load_segments(struct elf_module *module, Elf32_Ehdr *elf_hdr) {
 
 		if (cr_pht->p_type == PT_LOAD) {
 			// Copy the segment at its destination
-			if (cr_pht->p_offset < module->u.l._cr_offset) {
-				// The segment contains data before the current offset
-				// It can be discarded without worry - it would contain only
-				// headers
-				Elf32_Off aux_off = module->u.l._cr_offset - cr_pht->p_offset;
-
-				if (image_read((char *)module_get_absolute(cr_pht->p_vaddr, module) + aux_off,
-					       cr_pht->p_filesz - aux_off, module) < 0) {
-					res = -1;
-					goto out;
-				}
-			} else {
-				if (image_seek(cr_pht->p_offset, module) < 0) {
-					res = -1;
-					goto out;
-				}
-
-				if (image_read(module_get_absolute(cr_pht->p_vaddr, module),
-						cr_pht->p_filesz, module) < 0) {
-					res = -1;
-					goto out;
-				}
+			if (image_seek(cr_pht->p_offset, module) < 0) {
+				res = -1;
+				goto out;
+			}
+			
+			if (image_read(module_get_absolute(cr_pht->p_vaddr, module),
+				       cr_pht->p_filesz, module) < 0) {
+				res = -1;
+				goto out;
 			}
 
 			/*
