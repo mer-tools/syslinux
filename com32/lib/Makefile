@@ -60,7 +60,7 @@ LIBLOAD_OBJS = \
 	syslinux/run_default.o syslinux/run_command.o			\
 	syslinux/cleanup.o syslinux/localboot.o	syslinux/runimage.o	\
 	\
-	syslinux/loadfile.o syslinux/zloadfile.o	\
+	syslinux/loadfile.o syslinux/floadfile.o syslinux/zloadfile.o	\
 	\
 	syslinux/load_linux.o syslinux/initramfs.o			\
 	syslinux/initramfs_file.o syslinux/initramfs_loadfile.o		\
@@ -81,10 +81,10 @@ LIBENTRY_OBJS = \
 	dprintf.o vdprintf.o						\
 	\
 	syslinux/idle.o							\
+	\
 	exit.o
 
 LIBMODULE_OBJS = \
-	syslinux/floadfile.o 						\
 	sys/module/common.o sys/module/elf_module.o		\
 	sys/module/elfutils.o					\
 	sys/module/exec.o

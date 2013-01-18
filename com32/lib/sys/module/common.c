@@ -110,8 +110,8 @@ again:
 int image_load(struct elf_module *module)
 {
 	void *zdata, *mdata;
-	size_t zlen, mlen;
-	const struct slzm_header *hdr;
+	size_t mlen;
+	struct slzm_header hdr;
 	FILE *f;
 	int zr;
 	int rv = -1;
@@ -124,34 +124,39 @@ int image_load(struct elf_module *module)
 	f = findpath(module->name);
 
 	if (!f) {
-		DBG_PRINT("Could not open module file '%s'\n", module->name);
+		dprintf("%s: could not open module file\n", module->name);
 		goto error;
 	}
 
-	if (floadfile(f, &zdata, &zlen, NULL, 0)) {
-		DBG_PRINT("Could not read module file '%s'\n", module->name);
+	if (_fread(&hdr, sizeof hdr, f) != sizeof hdr) {
+		dprintf("%s: could not read module header\n",
+			module->name);
+		goto error;
+	}
+
+	if (hdr.magic[0] != SLZM_MAGIC1 || hdr.magic[1] != SLZM_MAGIC2 ||
+	    hdr.platform != SLZM_PLATFORM || hdr.arch != SLZM_ARCH) {
+		dprintf("%s: bad header\n", module->name);
+		goto error;
+	}
+
+	zdata = malloc(hdr.zsize);
+	if (!zdata) {
+		dprintf("%s: failed to allocate zdata buffer\n",
+			module->name);
+		goto error;
+	}
+
+	if (_fread(zdata, hdr.zsize, f) != hdr.zsize) {
+		dprintf("%s: failed to read module data\n",
+			module->name);
 		goto error;
 	}
 
 	fclose(f);
 	f = NULL;
 
-	hdr = zdata;
-	if (zlen < sizeof *hdr) {
-		dprintf("%s: file too short\n", module->name);
-		goto error;
-	}
-
-	zlen -= sizeof *hdr;
-
-	if (hdr->magic[0] != SLZM_MAGIC1 || hdr->magic[1] != SLZM_MAGIC2 ||
-	    hdr->platform != SLZM_PLATFORM || hdr->arch != SLZM_ARCH ||
-	    zlen < hdr->zsize) {
-		dprintf("%s: bad header\n", module->name);
-		goto error;
-	}
-
-	mlen = hdr->usize + 15;
+	mlen = hdr.usize + 15;
 	mdata = malloc(mlen);
 	if (!mdata) {
 		dprintf("%s: failed to allocate mdata buffer\n",
@@ -159,17 +164,16 @@ int image_load(struct elf_module *module)
 		goto error;
 	}
 	
-	zr = lzo1x_decompress_fast_safe((const char *)zdata + sizeof *hdr,
-					hdr->zsize, mdata, &mlen, NULL);
+	zr = lzo1x_decompress_fast_safe(zdata, hdr.zsize, mdata, &mlen, NULL);
 	if (zr) {
 		dprintf("%s: decompression returned error %d\n",
 			module->name, zr);
 		goto error;
 	}
 
-	if (mlen != hdr->usize) {
+	if (mlen != hdr.usize) {
 		dprintf("%s: decompression returned %zu bytes expected %u\n",
-			module->name, mlen, hdr->usize);
+			module->name, mlen, hdr.usize);
 		goto error;
 	}
 
