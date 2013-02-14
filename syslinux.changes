@@ -1,0 +1,51 @@
+* Thu Feb 14 2013 David Greaves <david@dgreaves.com> - 4.06
+- Update to 4.06
+- Use git-pkg
+
+* Wed Feb 15 2012 Marko Saukko <marko.saukko@gmail.com> - 4.05
+- Update to 4.05
+- Dropped debian packaging
+- Dropped merged patch btrfs.patch
+
+* Thu Jul 28 2011 Gui Chen <gui.chen@intel.com> - 4.02
+- Update to 4.02
+- Support btrfs subvolume
+
+* Thu May 19 2011 Anas Nashif <anas.nashif@intel.com> - 4.00
+- Move documentation to devel package
+
+* Tue Jun 29 2010 Yi Yang <yi.y.yang@intel.com> - 4.00
+- Update to 4.00
+
+* Tue May 18 2010 Yi Yang <yi.y.yang@intel.com> - 3.85
+- Support x86_64
+
+* Sat Apr 10 2010 Anas Nashif <anas.nashif@intel.com> - 3.85
+- Fixed rpmlint errors
+
+* Fri Feb 26 2010 Yi Yang <yi.y.yang@intel.com> - 3.85
+- Debianized syslinux
+
+* Sun Feb 21 2010 Yi Yang <yi.y.yang@intel.com> - 3.85
+- Update to 3.85
+
+* Mon Dec 21 2009 Yi Yang <yi.y.yang@intel.com> - 3.84
+- Update to 3.84
+
+* Tue Oct 06 2009 Anas Nashif <anas.nashif@intel.com> - 3.83
+- Update to 3.83
+
+* Mon Jun 01 2009 Yi Yang <yi.y.yang@intel.com> - 3.73
+- Update to 3.81 with 3.82-pre2 fix patches
+
+* Sat Feb 07 2009 Anas Nashif <anas.nashif@intel.com> - 3.73
+- Update to syslinux 3.73
+
+* Tue Jan 13 2009 Anas Nashif <anas.nashif@intel.com> - 3.72
+- Cleanup spec file
+- Fixed Source tag
+
+* Fri Jan 09 2009 Anas Nashif <anas.nashif@intel.com> - 3.72
+- Update to 3.72
+- Use original spec file
+
