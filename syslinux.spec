@@ -6,7 +6,7 @@ Release: 1
 License: GPLv2
 Url: http://syslinux.zytor.com/
 Group: System/Boot
-Source0: %{name}-%{version}.tar.xz
+Source0: %{name}-%{version}.tar.gz
 ExclusiveArch: %{ix86} x86_64
 BuildRequires: nasm >= 0.98.39
 BuildRequires: perl
