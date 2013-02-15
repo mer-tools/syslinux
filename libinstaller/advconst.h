@@ -1,1 +1,1 @@
-../com32/include/syslinux/advconst.h
+com32/include/syslinux/advconst.h
