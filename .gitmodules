@@ -1,0 +1,3 @@
+[submodule "syslinux"]
+	path = syslinux
+	url = https://git.kernel.org/pub/scm/boot/syslinux/syslinux.git
