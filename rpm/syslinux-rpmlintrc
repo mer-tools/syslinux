@@ -1,0 +1,2 @@
+from Config import *
+addFilter("syslinux-devel.* arch-dependent-file-in-usr-share")
