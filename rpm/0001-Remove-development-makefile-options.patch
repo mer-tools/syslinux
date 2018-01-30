@@ -1,0 +1,22 @@
+From 82aa82e2c4c73051564929c6b19b5c5e49dd736c Mon Sep 17 00:00:00 2001
+From: Matti Kosola <matti.kosola@jolla.com>
+Date: Tue, 30 Jan 2018 10:54:14 +0200
+Subject: [PATCH] Remove development makefile options
+
+Signed-off-by: Matti Kosola <matti.kosola@jolla.com>
+---
+ mk/devel.mk | 2 --
+ 1 file changed, 2 deletions(-)
+ delete mode 100644 mk/devel.mk
+
+diff --git a/mk/devel.mk b/mk/devel.mk
+deleted file mode 100644
+index 104207f..0000000
+--- a/mk/devel.mk
++++ /dev/null
+@@ -1,2 +0,0 @@
+-# Useful while doing development, but not for production.
+-GCCWARN += -Wno-clobbered -Werror
+-- 
+1.9.1
+

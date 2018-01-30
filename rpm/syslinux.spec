@@ -10,9 +10,12 @@ Source0: %{name}-%{version}.tar.gz
 ExclusiveArch: %{ix86} x86_64
 BuildRequires: nasm >= 0.98.39
 BuildRequires: perl
+BuildRequires: python
 BuildRequires: libuuid-devel
 
 Source101: syslinux-rpmlintrc
+Patch0:	0001-Remove-development-makefile-options.patch
+
 Autoreq: 0
 %ifarch x86_64
 Requires: mtools
@@ -63,10 +66,10 @@ booting in the /var/lib/tftpboot directory.
 %prep
 %setup -q -n %{name}-%{version}/%{name}
 
+%patch0 -p1
+
 %build
-make CC='%{my_cc}' clean
-make CC='%{my_cc}' installer
-make CC='%{my_cc}' -C sample tidy
+make CC='%{my_cc}'
 
 %install
 rm -rf %{buildroot}
@@ -75,20 +78,16 @@ make CC='%{my_cc}' install-all \
 	LIBDIR=%{_libdir} DATADIR=%{_datadir} \
 	MANDIR=%{_mandir} INCDIR=%{_includedir} \
 	TFTPBOOT=/var/lib/tftpboot EXTLINUXDIR=/boot/extlinux
-make CC='%{my_cc}' -C sample tidy
 
 mkdir -p %{buildroot}/etc
 ( cd %{buildroot}/etc && ln -s ../boot/extlinux/extlinux.conf . )
 
 %files
 %defattr(-,root,root)
-%doc COPYING NEWS doc/*
-%doc sample
-%doc %{_mandir}/man*/*
+%doc COPYING
 %{_bindir}/*
 %dir %{_datadir}/syslinux
 %{_datadir}/syslinux/*.com
-%{_datadir}/syslinux/*.exe
 %{_datadir}/syslinux/*.c32
 %{_datadir}/syslinux/*.bin
 %{_datadir}/syslinux/*.0
@@ -98,6 +97,9 @@ mkdir -p %{buildroot}/etc
 
 %files devel
 %defattr(-,root,root)
+%doc NEWS doc/*
+%doc sample
+%doc %{_mandir}/man*/*
 %{_datadir}/syslinux/com32
 
 %files extlinux
