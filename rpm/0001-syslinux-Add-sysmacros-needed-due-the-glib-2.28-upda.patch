@@ -1,0 +1,25 @@
+From 6da43da694107eb168e5d3d2d8b395dedbabed11 Mon Sep 17 00:00:00 2001
+From: Niels Breet <niels.breet@jolla.com>
+Date: Tue, 30 Apr 2019 12:51:48 +0300
+Subject: [PATCH] [syslinux] Add sysmacros needed due the glib 2.28 update.
+ Contributes to JB#45154
+
+---
+ extlinux/main.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/extlinux/main.c b/extlinux/main.c
+index f0d8e11..35ec1a1 100644
+--- a/extlinux/main.c
++++ b/extlinux/main.c
+@@ -37,6 +37,7 @@
+ #include <sysexits.h>
+ #include <sys/ioctl.h>
+ #include <sys/stat.h>
++#include <sys/sysmacros.h>
+ #include <sys/types.h>
+ #include <sys/mount.h>
+ #include <sys/vfs.h>
+-- 
+1.9.1
+

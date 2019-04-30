@@ -15,6 +15,7 @@ BuildRequires: libuuid-devel
 
 Source101: syslinux-rpmlintrc
 Patch0:	0001-Remove-development-makefile-options.patch
+Patch1: 0001-syslinux-Add-sysmacros-needed-due-the-glib-2.28-upda.patch
 
 Autoreq: 0
 %ifarch x86_64
@@ -67,6 +68,7 @@ booting in the /var/lib/tftpboot directory.
 %setup -q -n %{name}-%{version}/%{name}
 
 %patch0 -p1
+%patch1 -p1
 
 %build
 make CC='%{my_cc}'
