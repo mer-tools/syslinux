@@ -1,2 +1,3 @@
-from Config import *
-addFilter("syslinux-devel.* arch-dependent-file-in-usr-share")
+addFilter("arch-dependent-file-in-usr-share");
+addFilter("executable-stack");
+addFilter("shared-lib-without-dependency-information");
