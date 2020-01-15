@@ -1,30 +1,26 @@
 # -*- rpm -*-
 Summary: Kernel loader which uses a FAT, ext2/3 or iso9660 filesystem or a PXE network
 Name: syslinux
-Version: 4.06
+Version: 6.04
 Release: 1
 License: GPLv2
 Url: http://syslinux.zytor.com/
-Group: System/Boot
 Source0: %{name}-%{version}.tar.gz
-ExclusiveArch: %{ix86} x86_64
 BuildRequires: nasm >= 0.98.39
 BuildRequires: perl
 BuildRequires: python
 BuildRequires: libuuid-devel
+Requires: mtools, libc.so.6
 
 Source101: syslinux-rpmlintrc
-Patch0:	0001-Remove-development-makefile-options.patch
-Patch1: 0001-syslinux-Add-sysmacros-needed-due-the-glib-2.28-upda.patch
+Patch0001: 0001-Add-install-all-target-to-top-side-of-HAVE_FIRMWARE.patch
+Patch0002: 0002-ext4-64bit-feature.patch
+Patch0003: 0003-include-sysmacros-h.patch
+Patch0004: 0004-Add-RPMOPTFLAGS-to-CFLAGS-for-some-stuff.patch
+Patch0005: 0001-Fix-build-with-gcc8.patch
+Patch0006: 0001-Patch-out-git-dependency.patch
 
 Autoreq: 0
-%ifarch x86_64
-Requires: mtools
-%define my_cc gcc
-%else
-Requires: mtools, libc.so.6
-%define my_cc gcc -m32
-%endif
 
 # NOTE: extlinux belongs in /sbin, not in /usr/sbin, since it is typically
 # a system bootloader, and may be necessary for system recovery.
@@ -32,7 +28,6 @@ Requires: mtools, libc.so.6
 
 %package devel
 Summary: Development environment for SYSLINUX add-on modules
-Group: Development/Libraries
 Requires: syslinux
 
 %description
@@ -48,7 +43,6 @@ necessary to compile such modules.
 
 %package extlinux
 Summary: The EXTLINUX bootloader, for booting the local system
-Group: System/Boot
 Requires: syslinux
 
 %description extlinux
@@ -56,30 +50,40 @@ The EXTLINUX bootloader, for booting the local system, as well as all
 the SYSLINUX/PXELINUX modules in /boot.
 
 %package tftpboot
-Summary: SYSLINUX modules in /var/lib/tftpboot, available for network booting
-Group: Applications/Internet
+Summary: SYSLINUX modules in /tftpboot, available for network booting
 Requires: syslinux
 
 %description tftpboot
 All the SYSLINUX/PXELINUX modules directly available for network
-booting in the /var/lib/tftpboot directory.
+booting in the /tftpboot directory.
 
 %prep
 %setup -q -n %{name}-%{version}/%{name}
 
-%patch0 -p1
-%patch1 -p1
+%patch0001 -p1
+%patch0002 -p1
+%patch0003 -p1
+%patch0004 -p1
+%patch0005 -p1
+%patch0006 -p1
 
 %build
-make CC='%{my_cc}'
+make clean
+make bios
 
 %install
 rm -rf %{buildroot}
-make CC='%{my_cc}' install-all \
+mkdir -p %{buildroot}%{_bindir}
+mkdir -p %{buildroot}%{_sbindir}
+mkdir -p %{buildroot}%{_prefix}/lib/syslinux
+mkdir -p %{buildroot}%{_includedir}
+
+make bios install-all \
 	INSTALLROOT=%{buildroot} BINDIR=%{_bindir} SBINDIR=%{_sbindir} \
 	LIBDIR=%{_libdir} DATADIR=%{_datadir} \
 	MANDIR=%{_mandir} INCDIR=%{_includedir} \
-	TFTPBOOT=/var/lib/tftpboot EXTLINUXDIR=/boot/extlinux
+	TFTPBOOT=/tftpboot EXTLINUXDIR=/boot/extlinux \
+	LDLINUX=ldlinux.c32
 
 mkdir -p %{buildroot}/etc
 ( cd %{buildroot}/etc && ln -s ../boot/extlinux/extlinux.conf . )
@@ -112,7 +116,7 @@ mkdir -p %{buildroot}/etc
 
 %files tftpboot
 %defattr(-,root,root)
-/var/lib/tftpboot
+/tftpboot
 
 %post extlinux
 # If we have a /boot/extlinux.conf file, assume extlinux is our bootloader
