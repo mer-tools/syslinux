@@ -44,6 +44,8 @@ necessary to compile such modules.
 %package extlinux
 Summary: The EXTLINUX bootloader, for booting the local system
 Requires: syslinux
+Requires(post): coreutils
+Requires(post): util-linux
 
 %description extlinux
 The EXTLINUX bootloader, for booting the local system, as well as all
@@ -122,7 +124,9 @@ mkdir -p %{buildroot}/etc
 # If we have a /boot/extlinux.conf file, assume extlinux is our bootloader
 # and update it.
 if [ -f /boot/extlinux/extlinux.conf ]; then \
-    extlinux --update /boot/extlinux ; \
+    MOUNTPOINT=$(stat "--format=%m" /boot/extlinux)
+    DEVICE=$(findmnt --noheadings --output SOURCE $MOUNTPOINT)
+    extlinux --update /boot/extlinux --device $DEVICE ; \
 elif [ -f /boot/extlinux.conf ]; then \
     mkdir -p /boot/extlinux && \
     mv /boot/extlinux.conf /boot/extlinux/extlinux.conf && \
