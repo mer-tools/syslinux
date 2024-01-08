@@ -19,6 +19,7 @@ Patch0003: 0003-include-sysmacros-h.patch
 Patch0004: 0004-Add-RPMOPTFLAGS-to-CFLAGS-for-some-stuff.patch
 Patch0005: 0001-Fix-build-with-gcc8.patch
 Patch0006: 0001-Patch-out-git-dependency.patch
+Patch0007: 0016-strip-gnu-property.patch
 
 Autoreq: 0
 
@@ -60,14 +61,7 @@ All the SYSLINUX/PXELINUX modules directly available for network
 booting in the /tftpboot directory.
 
 %prep
-%setup -q -n %{name}-%{version}/%{name}
-
-%patch0001 -p1
-%patch0002 -p1
-%patch0003 -p1
-%patch0004 -p1
-%patch0005 -p1
-%patch0006 -p1
+%autosetup -p1 -n %{name}-%{version}/%{name}
 
 %build
 make clean
