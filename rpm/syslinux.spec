@@ -20,6 +20,9 @@ Patch0004: 0004-Add-RPMOPTFLAGS-to-CFLAGS-for-some-stuff.patch
 Patch0005: 0001-Fix-build-with-gcc8.patch
 Patch0006: 0001-Patch-out-git-dependency.patch
 Patch0007: 0016-strip-gnu-property.patch
+Patch0008: 0017-single-load-segment.patch
+Patch0009: 0018-prevent-pow-optimization.patch
+Patch0010: 0019-gcc-10-compatibility.patch
 
 Autoreq: 0
 
