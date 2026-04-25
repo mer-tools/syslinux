@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matti=20Lehtim=C3=A4ki?= <matti.lehtimaki@jolla.com>
+Date: Thu, 15 Jan 2026 10:07:45 +0200
+Subject: [PATCH] isohybrid: Use SOURCE_DATE_EPOCH for deterministic results
+
+Taken from OpenSUSE, original author Bernhard M. Wiedemann <bwiedemann@suse.de>
+---
+ utils/isohybrid.c  | 8 +++++++-
+ utils/isohybrid.in | 2 +-
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/utils/isohybrid.c b/utils/isohybrid.c
+index 1a203213506ce2f792ea20666cd91cfc80a5e90e..e16110f410fc8db3d6c1e313672d097a922bbf53 100644
+--- a/utils/isohybrid.c
++++ b/utils/isohybrid.c
+@@ -948,6 +948,8 @@ main(int argc, char *argv[])
+     FILE *fp = NULL;
+     uint8_t *buf = NULL, *bufz = NULL;
+     int cylsize = 0, frac = 0;
++    int randseed;
++    char *source_date_epoch;
+     size_t orig_gpt_size, free_space, gpt_size;
+     struct iso_primary_descriptor descriptor;
+ 
+@@ -965,7 +967,11 @@ main(int argc, char *argv[])
+     if ((mode & EFI) && offset)
+ 	errx(1, "%s: --offset is invalid with UEFI images\n", argv[0]);
+ 
+-    srand(time(NULL) << (getppid() << getpid()));
++
++    if((source_date_epoch = getenv("SOURCE_DATE_EPOCH")) == NULL ||
++       (randseed = strtol(source_date_epoch, NULL, 10)) <= 0)
++        randseed = time(NULL) ^ (getppid()<<2) ^ getpid();
++    srand(randseed);
+ 
+     if (!(fp = fopen(argv[0], "r+")))
+         err(1, "could not open file `%s'", argv[0]);
+diff --git a/utils/isohybrid.in b/utils/isohybrid.in
+index a12778483f75ab8d17033b7a0e22ed239734cc19..3acfb9181b5113d71f8064acf54a81707683952a 100644
+--- a/utils/isohybrid.in
++++ b/utils/isohybrid.in
+@@ -199,7 +199,7 @@ if (defined($opt{'id'})) {
+     seek(FILE, 440, SEEK_SET) or die "$0: $file: $!\n";
+     read(FILE, $id, 4);
+     if ($id eq "\x00\x00\x00\x00") {
+-	$id = pack("V", get_random());
++	$id = pack("V", $ENV{SOURCE_DATE_EPOCH} || get_random());
+     }
+ }
+ 

@@ -8,6 +8,7 @@ Url: https://github.com/mer-tools/syslinux
 Source0: %{name}-%{version}.tar.gz
 BuildRequires: nasm >= 0.98.39
 BuildRequires: perl
+BuildRequires: perl-Digest-SHA
 BuildRequires: python
 BuildRequires: libuuid-devel
 %ifarch %{ix86}
@@ -29,6 +30,8 @@ Patch0008: 0017-single-load-segment.patch
 Patch0009: 0018-prevent-pow-optimization.patch
 Patch0010: 0019-gcc-10-compatibility.patch
 Patch0011: 0020-gcc-14-compatibility.patch
+Patch0012: 0021-mtime.patch
+Patch0013: 0001-isohybrid-Use-SOURCE_DATE_EPOCH-for-deterministic-re.patch
 
 Autoreq: 0
 
