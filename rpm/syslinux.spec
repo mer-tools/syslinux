@@ -4,13 +4,18 @@ Name: syslinux
 Version: 6.04
 Release: 1
 License: GPLv2
-Url: http://syslinux.zytor.com/
+Url: https://github.com/mer-tools/syslinux
 Source0: %{name}-%{version}.tar.gz
 BuildRequires: nasm >= 0.98.39
 BuildRequires: perl
 BuildRequires: python
 BuildRequires: libuuid-devel
+%ifarch %{ix86}
 Requires: mtools, libc.so.6
+%endif
+%ifarch x86_64
+Requires: mtools, libc.so.6()(64bit)
+%endif
 
 Source101: syslinux-rpmlintrc
 Patch0001: 0001-Add-install-all-target-to-top-side-of-HAVE_FIRMWARE.patch
@@ -23,6 +28,7 @@ Patch0007: 0016-strip-gnu-property.patch
 Patch0008: 0017-single-load-segment.patch
 Patch0009: 0018-prevent-pow-optimization.patch
 Patch0010: 0019-gcc-10-compatibility.patch
+Patch0011: 0020-gcc-14-compatibility.patch
 
 Autoreq: 0
 
@@ -71,51 +77,20 @@ make clean
 make bios
 
 %install
-rm -rf %{buildroot}
 mkdir -p %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{_sbindir}
 mkdir -p %{buildroot}%{_prefix}/lib/syslinux
 mkdir -p %{buildroot}%{_includedir}
 
 make bios install-all \
-	INSTALLROOT=%{buildroot} BINDIR=%{_bindir} SBINDIR=%{_sbindir} \
-	LIBDIR=%{_libdir} DATADIR=%{_datadir} \
-	MANDIR=%{_mandir} INCDIR=%{_includedir} \
-	TFTPBOOT=/tftpboot EXTLINUXDIR=/boot/extlinux \
-	LDLINUX=ldlinux.c32
+    INSTALLROOT=%{buildroot} BINDIR=%{_bindir} SBINDIR=%{_sbindir} \
+    LIBDIR=%{_libdir} DATADIR=%{_datadir} \
+    MANDIR=%{_mandir} INCDIR=%{_includedir} \
+    TFTPBOOT=/tftpboot EXTLINUXDIR=/boot/extlinux \
+    LDLINUX=ldlinux.c32
 
 mkdir -p %{buildroot}/etc
 ( cd %{buildroot}/etc && ln -s ../boot/extlinux/extlinux.conf . )
-
-%files
-%defattr(-,root,root)
-%doc COPYING
-%{_bindir}/*
-%dir %{_datadir}/syslinux
-%{_datadir}/syslinux/*.com
-%{_datadir}/syslinux/*.c32
-%{_datadir}/syslinux/*.bin
-%{_datadir}/syslinux/*.0
-%{_datadir}/syslinux/memdisk
-%{_datadir}/syslinux/dosutil/*
-%{_datadir}/syslinux/diag/*
-
-%files devel
-%defattr(-,root,root)
-%doc NEWS doc/*
-%doc sample
-%doc %{_mandir}/man*/*
-%{_datadir}/syslinux/com32
-
-%files extlinux
-%defattr(-,root,root)
-%{_sbindir}/extlinux
-/boot/extlinux
-%config /etc/extlinux.conf
-
-%files tftpboot
-%defattr(-,root,root)
-/tftpboot
 
 %post extlinux
 # If we have a /boot/extlinux.conf file, assume extlinux is our bootloader
@@ -129,3 +104,29 @@ elif [ -f /boot/extlinux.conf ]; then \
     mv /boot/extlinux.conf /boot/extlinux/extlinux.conf && \
     extlinux --update /boot/extlinux ; \
 fi
+
+%files
+%doc COPYING
+%{_bindir}/*
+%dir %{_datadir}/syslinux
+%{_datadir}/syslinux/*.com
+%{_datadir}/syslinux/*.c32
+%{_datadir}/syslinux/*.bin
+%{_datadir}/syslinux/*.0
+%{_datadir}/syslinux/memdisk
+%{_datadir}/syslinux/dosutil/*
+%{_datadir}/syslinux/diag/*
+
+%files devel
+%doc NEWS doc/*
+%doc sample
+%doc %{_mandir}/man*/*
+%{_datadir}/syslinux/com32
+
+%files extlinux
+%{_sbindir}/extlinux
+/boot/extlinux
+%config /etc/extlinux.conf
+
+%files tftpboot
+/tftpboot
